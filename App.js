@@ -17,6 +17,8 @@ import GraphScreen from './screens/GraphScreen';
 import HistoryScreen from './screens/HistoryScreen';
 import StatusScreen from './screens/StatusScreen';
 import SettingsScreen from './screens/SettingsScreen';
+import ChatScreen from './screens/ChatScreen';
+import EmergencyOverlay from './screens/EmergencyOverlay';
 
 const Tab = createBottomTabNavigator();
 
@@ -37,6 +39,7 @@ function MainTabs() {
               else if (route.name === 'Graph') iconName = focused ? 'stats-chart' : 'stats-chart-outline';
               else if (route.name === 'History') iconName = focused ? 'list' : 'list-outline';
               else if (route.name === 'Status') iconName = focused ? 'hardware-chip' : 'hardware-chip-outline';
+              else if (route.name === 'Ask') iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
               else if (route.name === 'Settings') iconName = focused ? 'settings' : 'settings-outline';
               return <Ionicons name={iconName} size={size} color={color} />;
             },
@@ -60,9 +63,11 @@ function MainTabs() {
           <Tab.Screen name="Graph" component={GraphScreen} options={{ title: 'SMOKE LEVEL GRAPH', tabBarLabel: 'Graph' }} />
           <Tab.Screen name="History" component={HistoryScreen} options={{ title: 'ALERT HISTORY', tabBarLabel: 'History' }} />
           <Tab.Screen name="Status" component={StatusScreen} options={{ title: 'DEVICE STATUS', tabBarLabel: 'Status' }} />
+          <Tab.Screen name="Ask" component={ChatScreen} options={{ title: 'ASK SENTINEL', tabBarLabel: 'Ask' }} />
           <Tab.Screen name="Settings" component={SettingsScreen} options={{ title: 'SETTINGS', tabBarLabel: 'Settings' }} />
         </Tab.Navigator>
       </NavigationContainer>
+      <EmergencyOverlay />
     </>
   );
 }

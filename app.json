@@ -1,5 +1,21 @@
 {
-  "plugins": [
-    "expo-font"
-  ]
+  "expo": {
+    "name": "IoT Sentinel",
+    "slug": "iot-sentinel-app",
+    "plugins": [
+      "expo-font",
+      [
+        "./plugins/withNdkVersion",
+        {
+          "ndkVersion": "28.2.13676358"
+        }
+      ]
+    ],
+    "android": {
+      "permissions": [
+        "android.permission.CALL_PHONE"
+      ],
+      "package": "com.anonymous.iotsentinelapp"
+    }
+  }
 }

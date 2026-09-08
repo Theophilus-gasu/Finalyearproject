@@ -58,21 +58,24 @@ const Gauge = ({ value, colors }) => {
 };
 
 export default function DashboardScreen() {
-  const { 
-    smokeLevel, temperature, fireActive, status, 
-    waterLeak, exhaustFan, gasActive, waterLeakActive,
-    toggleExhaustFan, acknowledgeAlert, resetSystem, 
-    thresholdDanger, thresholdTempDanger,
-    colors, theme 
+  const {
+    smokeLevel, temperature, humidity, fireActive, status,
+    waterLeak, exhaustFan, waterLeakActive, lastReadingAt, readings,
+    toggleExhaustFan, acknowledgeAlert, resetSystem,
+    thresholdWarning, thresholdDanger, thresholdTempDanger,
+    colors, theme
   } = useContext(FirebaseContext);
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   const isSmokeDanger = smokeLevel >= (thresholdDanger || 500);
+  const isSmokeWarning = smokeLevel >= (thresholdWarning || 300);
   const isTempDanger = temperature >= (thresholdTempDanger || 35);
+  const humidityColor = humidity >= 80 ? colors.warning : colors.humidity;
+  const lastReadingText = lastReadingAt ? new Date(lastReadingAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—';
 
   useEffect(() => {
-    if (fireActive || gasActive || waterLeakActive || isSmokeDanger || isTempDanger) {
+    if (fireActive || waterLeakActive || isSmokeDanger || isTempDanger) {
       Animated.loop(
         Animated.sequence([
           Animated.timing(pulseAnim, { toValue: 1.05, duration: 500, useNativeDriver: true }),
@@ -82,7 +85,7 @@ export default function DashboardScreen() {
     } else {
       pulseAnim.setValue(1);
     }
-  }, [fireActive, gasActive, waterLeakActive, isSmokeDanger, isTempDanger]);
+  }, [fireActive, waterLeakActive, isSmokeDanger, isTempDanger]);
 
   const gradientColors = theme === 'Dark' 
     ? ['#0f172a', '#1e293b'] 
@@ -134,15 +137,15 @@ export default function DashboardScreen() {
       <View style={styles.cardsRow}>
         <LinearGradient colors={gradientColors} style={[styles.card, {borderColor: isSmokeDanger ? colors.danger : colors.borderColor}]}>
           <View style={styles.cardHeader}>
-            <Ionicons name="cloud-outline" size={20} color={isSmokeDanger ? colors.danger : (smokeLevel >= 300 ? colors.warning : colors.safe)} />
-            <Text style={[styles.cardTitle, {color: colors.textSub}]}>SMOKE SENSOR</Text>
+            <Ionicons name="cloud-outline" size={20} color={isSmokeDanger ? colors.danger : (isSmokeWarning ? colors.warning : colors.safe)} />
+            <Text style={[styles.cardTitle, {color: colors.textSub}]}>SMOKE / GAS</Text>
           </View>
           <View style={{flexDirection: 'row', alignItems: 'baseline', marginTop: 10}}>
             <Text style={[styles.cardValue, {color: colors.textMain}]}>{smokeLevel}</Text>
-            <Text style={[styles.cardUnit, {color: colors.textSub}]}>DIGITAL</Text>
+            <Text style={[styles.cardUnit, {color: colors.textSub}]}>/1023</Text>
           </View>
-          <Text style={[styles.cardStatus, {color: isSmokeDanger ? colors.danger : (smokeLevel >= 300 ? colors.warning : colors.safe)}]}>
-            {isSmokeDanger ? `HIGH (>=${thresholdDanger || 500})` : (smokeLevel >= 300 ? 'WARNING (>=300)' : 'NORMAL (<300)')}
+          <Text style={[styles.cardStatus, {color: isSmokeDanger ? colors.danger : (isSmokeWarning ? colors.warning : colors.safe)}]}>
+            {isSmokeDanger ? `HIGH (>=${thresholdDanger || 500})` : (isSmokeWarning ? `WARNING (>=${thresholdWarning || 300})` : `NORMAL (<${thresholdWarning || 300})`)}
           </Text>
         </LinearGradient>
         
@@ -157,6 +160,34 @@ export default function DashboardScreen() {
           </View>
           <Text style={[styles.cardStatus, {color: isTempDanger ? colors.danger : colors.safe}]}>
             {isTempDanger ? `HIGH (>=${thresholdTempDanger || 35}°C)` : `NORMAL (<${thresholdTempDanger || 35}°C)`}
+          </Text>
+        </LinearGradient>
+      </View>
+
+      {/* Humidity (DHT22) + last reading time */}
+      <View style={styles.cardsRow}>
+        <LinearGradient colors={gradientColors} style={[styles.card, {borderColor: colors.borderColor}]}>
+          <View style={styles.cardHeader}>
+            <Ionicons name="water-outline" size={20} color={humidityColor} />
+            <Text style={[styles.cardTitle, {color: colors.textSub}]}>HUMIDITY</Text>
+          </View>
+          <View style={{flexDirection: 'row', alignItems: 'baseline', marginTop: 10}}>
+            <Text style={[styles.cardValue, {color: colors.textMain}]}>{Math.round(humidity)}</Text>
+            <Text style={[styles.cardUnit, {color: colors.textSub}]}>%</Text>
+          </View>
+          <Text style={[styles.cardStatus, {color: humidityColor}]}>
+            {humidity >= 80 ? 'VERY HUMID (STEAM?)' : humidity >= 60 ? 'HUMID' : 'NORMAL'}
+          </Text>
+        </LinearGradient>
+
+        <LinearGradient colors={gradientColors} style={[styles.card, {borderColor: colors.borderColor}]}>
+          <View style={styles.cardHeader}>
+            <Ionicons name="time-outline" size={20} color={colors.textSub} />
+            <Text style={[styles.cardTitle, {color: colors.textSub}]}>LAST READING</Text>
+          </View>
+          <Text style={[styles.cardValueSmall, {color: colors.textMain}]}>{lastReadingText}</Text>
+          <Text style={[styles.cardStatus, {color: colors.textSub}]}>
+            {readings.length} SAMPLES BUFFERED
           </Text>
         </LinearGradient>
       </View>
@@ -190,7 +221,7 @@ export default function DashboardScreen() {
           <View style={{flex: 1, marginLeft: 15}}>
             <Text style={[styles.fanTitle, {color: colors.textMain}]}>Exhaust Fan Actuator</Text>
             <Text style={[styles.fanStatusText, {color: colors.textSub}]}>
-              Mode: {fireActive || gasActive || isSmokeDanger ? 'AUTO (ACTIVE)' : 'MANUAL CONTROL'}
+              Mode: {fireActive || isSmokeDanger ? 'AUTO (ACTIVE)' : 'MANUAL CONTROL'}
             </Text>
           </View>
           <View style={{flexDirection: 'row', alignItems: 'center'}}>
@@ -200,7 +231,7 @@ export default function DashboardScreen() {
             <Switch 
               value={exhaustFan} 
               onValueChange={toggleExhaustFan}
-              disabled={fireActive || gasActive || isSmokeDanger}
+              disabled={fireActive || isSmokeDanger}
               trackColor={{false: colors.borderColor, true: 'rgba(16, 185, 129, 0.4)'}} 
               thumbColor={exhaustFan ? colors.safe : '#94a3b8'} 
             />
@@ -218,11 +249,11 @@ export default function DashboardScreen() {
         </View>
         <View style={styles.statusRow}>
           <Text style={[styles.statusLabel, {color: colors.textSub}]}>Smoke Threshold</Text>
-          <Text style={[styles.statusValue, {color: colors.textSub}]}>500 (Digital)</Text>
+          <Text style={[styles.statusValue, {color: colors.textSub}]}>{thresholdDanger} / 1023</Text>
         </View>
         <View style={styles.statusRow}>
           <Text style={[styles.statusLabel, {color: colors.textSub}]}>Temp Threshold</Text>
-          <Text style={[styles.statusValue, {color: colors.textSub}]}>32°C</Text>
+          <Text style={[styles.statusValue, {color: colors.textSub}]}>{thresholdTempDanger}°C</Text>
         </View>
         <View style={styles.statusRow}>
           <Text style={[styles.statusLabel, {color: colors.textSub}]}>Water Sensor State</Text>
@@ -230,7 +261,7 @@ export default function DashboardScreen() {
         </View>
       </LinearGradient>
 
-      {(fireActive || gasActive || waterLeakActive || isSmokeDanger || isTempDanger) && (
+      {(fireActive || waterLeakActive || isSmokeDanger || isTempDanger) && (
         <View style={styles.actionButtons}>
           <TouchableOpacity style={[styles.ackButton, {backgroundColor: colors.danger}]} onPress={acknowledgeAlert}>
             <Ionicons name="checkmark-circle" size={24} color="#fff" />
@@ -244,7 +275,7 @@ export default function DashboardScreen() {
       )}
 
       <LinearGradient colors={gradientColors} style={[styles.gaugeSection, {borderColor: colors.borderColor}]}>
-        <Text style={[styles.sectionTitleCenter, {color: colors.textMain}]}>Smoke Sensor Gauge (Threshold: 500)</Text>
+        <Text style={[styles.sectionTitleCenter, {color: colors.textMain}]}>Smoke Sensor Gauge (Threshold: {thresholdDanger})</Text>
         <Gauge value={smokeLevel} colors={colors} />
       </LinearGradient>
       
@@ -264,6 +295,7 @@ const styles = StyleSheet.create({
   cardHeader: { flexDirection: 'row', alignItems: 'center' },
   cardTitle: { fontSize: 12, fontWeight: '800', letterSpacing: 0.5, marginLeft: 6 },
   cardValue: { fontSize: 36, fontWeight: '800' },
+  cardValueSmall: { fontSize: 22, fontWeight: '800', marginTop: 14, marginBottom: 4 },
   cardUnit: { fontSize: 13, marginLeft: 4, fontWeight: '600' },
   cardStatus: { fontSize: 11, marginTop: 4, fontWeight: '800', letterSpacing: 0.5 },
   fullWidthCard: { borderRadius: 12, padding: 16, borderWidth: 1, marginBottom: 15, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3 },

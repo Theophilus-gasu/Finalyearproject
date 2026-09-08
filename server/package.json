@@ -1,0 +1,18 @@
+{
+  "name": "iot-sentinel-server",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "description": "Serverless functions (Vercel) that call OpenAI on behalf of the IoT Sentinel app. The OpenAI key lives here, never in the app.",
+  "scripts": {
+    "dev": "node local.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^4.0.60",
+    "ai": "^7.0.93",
+    "zod": "^4.5.4"
+  }
+}

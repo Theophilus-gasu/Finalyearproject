@@ -1,19 +1,78 @@
-import React, { useContext } from 'react';
-import { View, Text, StyleSheet, Switch, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import React, { useContext, useState, useEffect } from 'react';
+import { View, Text, StyleSheet, Switch, ScrollView, TouchableOpacity, Alert, TextInput } from 'react-native';
 import { FirebaseContext } from '../FirebaseContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { checkHealth, AI_API_URL } from '../aiService';
 
 export default function SettingsScreen() {
   const { 
     vibration, setVibration, 
     pushNotif, setPushNotif,
     thresholdWarning, thresholdDanger,
-    thresholdGasWarning, thresholdGasDanger,
     waterLeakAlertEnabled, setWaterLeakAlertEnabled,
-    gasAlertEnabled, setGasAlertEnabled,
+    emergencyNumber, setEmergencyNumber,
+    autoCallEnabled, setAutoCallEnabled,
+    callDelaySeconds, setCallDelaySeconds,
+    testEmergencyCall, callPlaced,
+    aiEnabled, aiTriageEnabled, setAiTriageEnabled, speakReports, setSpeakReports,
     theme, setTheme, colors
   } = useContext(FirebaseContext);
+
+  const [aiHealth, setAiHealth] = useState(null); // null = not checked, {ok, ...} or {ok:false, error}
+  const checkAi = async () => {
+      setAiHealth({ checking: true });
+      try {
+          const h = await checkHealth();
+          setAiHealth(h);
+      } catch (err) {
+          setAiHealth({ ok: false, error: String(err?.message || err) });
+      }
+  };
+
+  const runTest = () => {
+      if (!autoCallEnabled) {
+          Alert.alert("Auto-Call is off", "Turn on Auto-Call on High Smoke first.");
+          return;
+      }
+      if (callPlaced) {
+          Alert.alert("Already called", "Press Acknowledge Alert on the Dashboard to reset before testing again.");
+          return;
+      }
+      Alert.alert(
+          "Test Emergency Countdown",
+          `This will start the ${callDelaySeconds}s countdown and then dial ${emergencyNumber}. Make sure that is a number you want to call.`,
+          [
+              { text: "Cancel", style: "cancel" },
+              { text: "Start", style: "destructive", onPress: testEmergencyCall }
+          ]
+      );
+  };
+
+  // Local drafts so typing doesn't write half-entered values into context
+  const [numberDraft, setNumberDraft] = useState(emergencyNumber);
+  const [delayDraft, setDelayDraft] = useState(String(callDelaySeconds));
+  useEffect(() => { setNumberDraft(emergencyNumber); }, [emergencyNumber]);
+  useEffect(() => { setDelayDraft(String(callDelaySeconds)); }, [callDelaySeconds]);
+
+  const commitNumber = () => {
+      const cleaned = numberDraft.trim();
+      if (cleaned.replace(/\D/g, '').length === 0) {
+          setNumberDraft(emergencyNumber);
+          return;
+      }
+      setEmergencyNumber(cleaned);
+  };
+
+  const commitDelay = () => {
+      const n = parseInt(delayDraft, 10);
+      if (!Number.isFinite(n) || n < 5 || n > 300) {
+          Alert.alert("Invalid Delay", "Countdown must be between 5 and 300 seconds.");
+          setDelayDraft(String(callDelaySeconds));
+          return;
+      }
+      setCallDelaySeconds(n);
+  };
 
   const toggleTheme = () => {
       setTheme(theme === 'Dark' ? 'Light' : 'Dark');
@@ -49,14 +108,90 @@ export default function SettingsScreen() {
         <View style={[styles.separator, {backgroundColor: colors.borderColor}]} />
 
         <View style={styles.settingRow}>
-          <Text style={[styles.settingLabel, {color: colors.iconColor}]}>Gas Level Alerting</Text>
-          <Switch value={gasAlertEnabled} onValueChange={setGasAlertEnabled} trackColor={{false: colors.borderColor, true: colors.warning}} thumbColor="#fff" />
+          <Text style={[styles.settingLabel, {color: colors.iconColor}]}>Water Leak Alerting</Text>
+          <Switch value={waterLeakAlertEnabled} onValueChange={setWaterLeakAlertEnabled} trackColor={{false: colors.borderColor, true: colors.waterAlert || '#3b82f6'}} thumbColor="#fff" />
+        </View>
+      </LinearGradient>
+
+      <LinearGradient colors={gradientColors} style={[styles.section, {borderColor: colors.borderColor}]}>
+        <Text style={[styles.sectionTitle, {color: colors.textSub}]}>EMERGENCY CALL</Text>
+
+        <View style={styles.settingRow}>
+          <Text style={[styles.settingLabel, {color: colors.iconColor}]}>Auto-Call on High Smoke</Text>
+          <Switch value={autoCallEnabled} onValueChange={setAutoCallEnabled} trackColor={{false: colors.borderColor, true: colors.danger}} thumbColor="#fff" />
         </View>
         <View style={[styles.separator, {backgroundColor: colors.borderColor}]} />
 
         <View style={styles.settingRow}>
-          <Text style={[styles.settingLabel, {color: colors.iconColor}]}>Water Leak Alerting</Text>
-          <Switch value={waterLeakAlertEnabled} onValueChange={setWaterLeakAlertEnabled} trackColor={{false: colors.borderColor, true: colors.waterAlert || '#3b82f6'}} thumbColor="#fff" />
+          <Text style={[styles.settingLabel, {color: colors.iconColor}]}>Emergency Number</Text>
+          <TextInput
+            style={[styles.input, {color: colors.textMain, borderColor: colors.borderColor, backgroundColor: colors.bgMain}]}
+            value={numberDraft}
+            onChangeText={setNumberDraft}
+            onBlur={commitNumber}
+            onSubmitEditing={commitNumber}
+            keyboardType="phone-pad"
+            placeholder="911"
+            placeholderTextColor={colors.textMuted}
+            returnKeyType="done"
+          />
+        </View>
+        <View style={[styles.separator, {backgroundColor: colors.borderColor}]} />
+
+        <View style={styles.settingRow}>
+          <Text style={[styles.settingLabel, {color: colors.iconColor}]}>Countdown (seconds)</Text>
+          <TextInput
+            style={[styles.input, styles.inputSmall, {color: colors.textMain, borderColor: colors.borderColor, backgroundColor: colors.bgMain}]}
+            value={delayDraft}
+            onChangeText={setDelayDraft}
+            onBlur={commitDelay}
+            onSubmitEditing={commitDelay}
+            keyboardType="number-pad"
+            returnKeyType="done"
+          />
+        </View>
+        <Text style={[styles.helpText, {color: colors.textMuted}]}>
+          When smoke reaches the danger threshold, the app waits this long for you to cancel, then dials the number above. Use your own number while testing.
+        </Text>
+        <TouchableOpacity style={[styles.testButton, {backgroundColor: colors.danger}]} onPress={runTest}>
+          <Ionicons name="call" size={18} color="#fff" />
+          <Text style={styles.testButtonText}>TEST EMERGENCY COUNTDOWN</Text>
+        </TouchableOpacity>
+      </LinearGradient>
+
+      <LinearGradient colors={gradientColors} style={[styles.section, {borderColor: colors.borderColor}]}>
+        <Text style={[styles.sectionTitle, {color: colors.textSub}]}>AI INCIDENT ANALYSIS</Text>
+
+        <View style={styles.settingRow}>
+          <View style={{flex: 1, marginRight: 12}}>
+            <Text style={[styles.settingLabel, {color: colors.iconColor}]}>Server</Text>
+            <Text style={[styles.helpInline, {color: colors.textMuted}]} numberOfLines={1}>{aiEnabled ? AI_API_URL : 'Not configured — set EXPO_PUBLIC_AI_API_URL in .env'}</Text>
+          </View>
+          <TouchableOpacity style={[styles.smallButton, {borderColor: colors.borderColor}]} onPress={checkAi} disabled={!aiEnabled}>
+            <Text style={[styles.smallButtonText, {color: aiEnabled ? colors.textMain : colors.textMuted}]}>
+              {aiHealth?.checking ? '…' : 'CHECK'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+        {aiHealth && !aiHealth.checking && (
+          <Text style={[styles.helpText, {color: aiHealth.ok ? colors.safe : colors.danger}]}>
+            {aiHealth.ok ? `Online · ${aiHealth.model} · key ${aiHealth.openaiKeyConfigured ? 'configured' : 'MISSING'}` : `Unreachable: ${aiHealth.error || 'no response'}`}
+          </Text>
+        )}
+        <View style={[styles.separator, {backgroundColor: colors.borderColor}]} />
+
+        <View style={styles.settingRow}>
+          <View style={{flex: 1, marginRight: 12}}>
+            <Text style={[styles.settingLabel, {color: colors.iconColor}]}>Triage Can Extend Countdown</Text>
+            <Text style={[styles.helpInline, {color: colors.textMuted}]}>A confident benign verdict (steam, cooking) doubles the countdown once. It never cancels the call.</Text>
+          </View>
+          <Switch value={aiTriageEnabled} onValueChange={setAiTriageEnabled} disabled={!aiEnabled} trackColor={{false: colors.borderColor, true: colors.humidity || '#06b6d4'}} thumbColor="#fff" />
+        </View>
+        <View style={[styles.separator, {backgroundColor: colors.borderColor}]} />
+
+        <View style={styles.settingRow}>
+          <Text style={[styles.settingLabel, {color: colors.iconColor}]}>Read Report Aloud</Text>
+          <Switch value={speakReports} onValueChange={setSpeakReports} disabled={!aiEnabled} trackColor={{false: colors.borderColor, true: colors.humidity || '#06b6d4'}} thumbColor="#fff" />
         </View>
       </LinearGradient>
 
@@ -85,36 +220,6 @@ export default function SettingsScreen() {
           <Text style={[styles.settingLabel, {color: colors.iconColor}]}>Danger ({thresholdDanger} - 1024)</Text>
           <View style={{flexDirection: 'row', alignItems: 'center'}}>
              <Text style={[styles.settingValue, {color: colors.danger}]}>500</Text>
-             <Ionicons name="chevron-forward" size={20} color={colors.textMuted} style={{marginLeft: 10}}/>
-          </View>
-        </TouchableOpacity>
-      </LinearGradient>
-
-      <LinearGradient colors={gradientColors} style={[styles.section, {borderColor: colors.borderColor}]}>
-        <Text style={[styles.sectionTitle, {color: colors.textSub}]}>GAS THRESHOLDS</Text>
-        
-        <TouchableOpacity style={styles.settingRowChevron}>
-          <Text style={[styles.settingLabel, {color: colors.iconColor}]}>Safe (0 - {thresholdGasWarning})</Text>
-          <View style={{flexDirection: 'row', alignItems: 'center'}}>
-             <Text style={[styles.settingValue, {color: colors.safe}]}>{thresholdGasWarning}</Text>
-             <Ionicons name="chevron-forward" size={20} color={colors.textMuted} style={{marginLeft: 10}}/>
-          </View>
-        </TouchableOpacity>
-        <View style={[styles.separator, {backgroundColor: colors.borderColor}]} />
-        
-        <TouchableOpacity style={styles.settingRowChevron}>
-          <Text style={[styles.settingLabel, {color: colors.iconColor}]}>Warning ({thresholdGasWarning + 1} - {thresholdGasDanger})</Text>
-          <View style={{flexDirection: 'row', alignItems: 'center'}}>
-             <Text style={[styles.settingValue, {color: colors.warning}]}>{thresholdGasDanger}</Text>
-             <Ionicons name="chevron-forward" size={20} color={colors.textMuted} style={{marginLeft: 10}}/>
-          </View>
-        </TouchableOpacity>
-        <View style={[styles.separator, {backgroundColor: colors.borderColor}]} />
-        
-        <TouchableOpacity style={styles.settingRowChevron}>
-          <Text style={[styles.settingLabel, {color: colors.iconColor}]}>Danger ({thresholdGasDanger + 1} - 100)</Text>
-          <View style={{flexDirection: 'row', alignItems: 'center'}}>
-             <Text style={[styles.settingValue, {color: colors.danger}]}>100</Text>
              <Ionicons name="chevron-forward" size={20} color={colors.textMuted} style={{marginLeft: 10}}/>
           </View>
         </TouchableOpacity>
@@ -160,5 +265,13 @@ const styles = StyleSheet.create({
   settingLabel: { fontSize: 16, fontWeight: '600' },
   separator: { height: 1, marginLeft: 20 },
   settingValue: { fontWeight: '900', fontSize: 16 },
-  settingValueNormal: { fontSize: 16, fontWeight: '600' }
+  settingValueNormal: { fontSize: 16, fontWeight: '600' },
+  input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, minWidth: 140, fontSize: 16, fontWeight: '700', textAlign: 'right' },
+  inputSmall: { minWidth: 80 },
+  helpText: { fontSize: 12, lineHeight: 18, paddingHorizontal: 20, paddingBottom: 12, paddingTop: 4 },
+  helpInline: { fontSize: 12, lineHeight: 16, marginTop: 2 },
+  smallButton: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
+  smallButtonText: { fontWeight: '800', fontSize: 12, letterSpacing: 0.5 },
+  testButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginHorizontal: 20, marginBottom: 12, paddingVertical: 12, borderRadius: 10 },
+  testButtonText: { color: '#fff', fontWeight: '800', marginLeft: 8, letterSpacing: 0.5 }
 });

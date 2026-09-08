@@ -8,28 +8,42 @@ import { LinearGradient } from 'expo-linear-gradient';
 export default function StatusScreen() {
   const { 
     status, colors, theme,
-    waterLeak, gasLevel, exhaustFan, fireActive, gasActive, waterLeakActive
+    waterLeak, exhaustFan, fireActive, waterLeakActive,
+    temperature, humidity, lastReadingAt, readings, isConnected,
+    emergencyNumber, autoCallEnabled, callDelaySeconds
   } = useContext(FirebaseContext);
 
   const isOnline = status !== 'OFFLINE';
   const gradientColors = theme === 'Dark' ? ['#0f172a', '#1e293b'] : ['#ffffff', '#f1f5f9'];
+
+  // A reading older than 30s means the ESP32 (which uploads every 2s) has gone quiet
+  const secondsSinceReading = lastReadingAt ? Math.round((Date.now() - lastReadingAt) / 1000) : null;
+  const deviceStale = secondsSinceReading === null || secondsSinceReading > 30;
+  const lastSyncText = secondsSinceReading === null ? 'No data yet'
+    : secondsSinceReading < 5 ? 'Just now'
+    : secondsSinceReading < 60 ? `${secondsSinceReading}s ago`
+    : `${Math.round(secondsSinceReading / 60)} min ago`;
 
   // Dynamic System Health calculation
   let healthPercent = 100;
   let healthDescText = "All systems are operating normally. Maintenance not required.";
   let healthColor = colors.safe;
 
-  if (fireActive && gasActive) {
+  if (fireActive && waterLeak) {
     healthPercent = 20;
-    healthDescText = "CRITICAL: Multiple hazards detected! High smoke level and gas leaks active.";
+    healthDescText = "CRITICAL: Multiple hazards detected! High smoke level and water leak active.";
     healthColor = colors.danger;
   } else if (fireActive) {
     healthPercent = 40;
     healthDescText = "CRITICAL: High smoke level detected! Exhaust fan is activated automatically.";
     healthColor = colors.danger;
-  } else if (gasActive) {
-    healthPercent = 55;
-    healthDescText = "WARNING: Gas leak detected! Exhaust fan running. Ventilate immediately.";
+  } else if (deviceStale && !isConnected) {
+    healthPercent = 50;
+    healthDescText = "OFFLINE: No connection to Firebase. Check the phone's network.";
+    healthColor = colors.danger;
+  } else if (deviceStale) {
+    healthPercent = 60;
+    healthDescText = "WARNING: No readings from the ESP32 recently. Check device power and Wi-Fi.";
     healthColor = colors.warning;
   } else if (waterLeak) {
     healthPercent = 70;
@@ -61,15 +75,15 @@ export default function StatusScreen() {
         <View style={[styles.separator, {backgroundColor: colors.borderColor}]} />
 
         <View style={styles.infoRow}>
-          <Text style={[styles.infoLabel, {color: colors.textSub}]}>Smoke Sensor (MQ-2)</Text>
-          <Text style={[styles.infoValue, {color: fireActive ? colors.danger : colors.safe}]}>
-            {fireActive ? 'DANGER' : 'ONLINE'}
+          <Text style={[styles.infoLabel, {color: colors.textSub}]}>Smoke / Gas Sensor (MQ, analog)</Text>
+          <Text style={[styles.infoValue, {color: fireActive ? colors.danger : (deviceStale ? colors.textSub : colors.safe)}]}>
+            {fireActive ? 'DANGER' : (deviceStale ? 'NO DATA' : 'ONLINE')}
           </Text>
         </View>
         <View style={styles.infoRow}>
-          <Text style={[styles.infoLabel, {color: colors.textSub}]}>Gas Sensor (MQ-5)</Text>
-          <Text style={[styles.infoValue, {color: gasActive ? colors.danger : colors.safe}]}>
-            {gasActive ? 'DANGER' : 'ONLINE'}
+          <Text style={[styles.infoLabel, {color: colors.textSub}]}>Temp / Humidity (DHT22)</Text>
+          <Text style={[styles.infoValue, {color: deviceStale ? colors.textSub : colors.safe}]}>
+            {deviceStale ? 'NO DATA' : `${temperature}°C · ${Math.round(humidity)}%`}
           </Text>
         </View>
         <View style={styles.infoRow}>
@@ -88,30 +102,23 @@ export default function StatusScreen() {
         <View style={[styles.separator, {backgroundColor: colors.borderColor}]} />
 
         <View style={styles.infoRow}>
-          <Text style={[styles.infoLabel, {color: colors.textSub}]}>Connection Quality</Text>
-          <Text style={[styles.infoValue, {color: colors.safe}]}>STABLE</Text>
-        </View>
-        <View style={styles.infoRow}>
-          <Text style={[styles.infoLabel, {color: colors.textSub}]}>Wi-Fi Signal</Text>
+          <Text style={[styles.infoLabel, {color: colors.textSub}]}>Firebase Connection</Text>
           <View style={{flexDirection: 'row', alignItems: 'center'}}>
-            <Ionicons name="wifi" size={18} color={colors.safe} style={{marginRight: 6}}/>
-            <Text style={[styles.infoValueNormal, {color: colors.iconColor}]}>-63 dBm</Text>
+            <Ionicons name="wifi" size={18} color={isConnected ? colors.safe : colors.danger} style={{marginRight: 6}}/>
+            <Text style={[styles.infoValue, {color: isConnected ? colors.safe : colors.danger}]}>{isConnected ? 'CONNECTED' : 'DISCONNECTED'}</Text>
           </View>
         </View>
         <View style={styles.infoRow}>
-          <Text style={[styles.infoLabel, {color: colors.textSub}]}>Battery Backup</Text>
-          <View style={{flexDirection: 'row', alignItems: 'center'}}>
-            <Ionicons name="battery-full" size={18} color={colors.safe} style={{marginRight: 6}}/>
-            <Text style={[styles.infoValueNormal, {color: colors.iconColor}]}>85%</Text>
-          </View>
+          <Text style={[styles.infoLabel, {color: colors.textSub}]}>Last Reading</Text>
+          <Text style={[styles.infoValueNormal, {color: deviceStale ? colors.warning : colors.iconColor}]}>{lastSyncText}</Text>
         </View>
         <View style={styles.infoRow}>
-          <Text style={[styles.infoLabel, {color: colors.textSub}]}>Last Sync</Text>
-          <Text style={[styles.infoValueNormal, {color: colors.iconColor}]}>Just now</Text>
+          <Text style={[styles.infoLabel, {color: colors.textSub}]}>Readings Buffered (5 min)</Text>
+          <Text style={[styles.infoValueNormal, {color: colors.iconColor}]}>{readings.length}</Text>
         </View>
         <View style={styles.infoRow}>
-          <Text style={[styles.infoLabel, {color: colors.textSub}]}>Hardware Uptime</Text>
-          <Text style={[styles.infoValueNormal, {color: colors.iconColor}]}>2d 14h 32m</Text>
+          <Text style={[styles.infoLabel, {color: colors.textSub}]}>Upload Interval</Text>
+          <Text style={[styles.infoValueNormal, {color: colors.iconColor}]}>2s (0.5s on change)</Text>
         </View>
       </LinearGradient>
 
@@ -146,12 +153,14 @@ export default function StatusScreen() {
           <View style={{flexDirection: 'row', alignItems: 'center'}}>
             <Ionicons name="call" size={22} color={colors.iconColor} style={{marginRight: 15}}/>
             <View>
-               <Text style={[styles.infoValueNormal, {color: colors.iconColor}]}>Primary Responder</Text>
-               <Text style={[styles.deviceId, {color: colors.textMain, marginTop: 2}]}>0591018927</Text>
+               <Text style={[styles.infoValueNormal, {color: colors.iconColor}]}>Emergency Number</Text>
+               <Text style={[styles.deviceId, {color: colors.textMain, marginTop: 2}]}>{emergencyNumber}</Text>
             </View>
           </View>
-          <View style={[styles.statusBadge, {backgroundColor: 'rgba(59, 130, 246, 0.2)', justifyContent: 'center'}]}>
-             <Text style={[styles.statusBadgeText, {color: '#3b82f6'}]}>AUTO-DIAL</Text>
+          <View style={[styles.statusBadge, {backgroundColor: autoCallEnabled ? 'rgba(59, 130, 246, 0.2)' : colors.borderColor, justifyContent: 'center'}]}>
+             <Text style={[styles.statusBadgeText, {color: autoCallEnabled ? '#3b82f6' : colors.textSub}]}>
+               {autoCallEnabled ? `AUTO-DIAL ${callDelaySeconds}s` : 'MANUAL'}
+             </Text>
           </View>
         </View>
       </LinearGradient>
